@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1786774935265,
+      "tag": "0000_fluffy_aqueduct",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786776182374,
+      "tag": "0001_my_gemini_schema_",
+      "breakpoints": true
+    }
+  ]
+}
