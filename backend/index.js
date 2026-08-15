@@ -2,6 +2,8 @@ import 'dotenv/config';
 import express from "express";
 import cookieParser from "cookie-parser";
 
+import userRoute from "./routes/user.route.js";
+
 const app = express();
 
 const PORT = process.env.PORT ?? 3000;
@@ -14,7 +16,7 @@ app.get("/", (req, res) => {
 });
 
 //routes Routers
-// app.use("/user", userRoute);
+app.use("/api/v1/user", userRoute);
 // app.use("/url", urlRoute);
 
 //dynamic route put below all static routes

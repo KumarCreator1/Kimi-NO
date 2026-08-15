@@ -1,5 +1,7 @@
-import { config } from "dotenv";
+import dotenv from "dotenv";
+dotenv.config();
 import { defineConfig } from "drizzle-kit";
+console.log("DATABASE_URL:drizzle.config", process.env.DATABASE_URL);
 
 config({ path: ".env" });
 
