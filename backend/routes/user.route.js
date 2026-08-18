@@ -1,12 +1,11 @@
-import express from 'express'
-import asyncHandler from '../utils/asyncHandler.js';
-import { registerUser,  } from '../controllers/user.controller.js';
+import express from "express";
+// import asyncHandler from "../utils/asyncHandler.js";
+import { registerUser } from "../controllers/user.controller.js";
 
-const router = express.Router()
+const router = express.Router();
 // @desc    POST /api/v1/user/register
-router.post('/register', asyncHandler(registerUser))
+router.post("/register", registerUser);
 // router.post('/login', loginUser)
 // router.get('/profile', getUserProfile)
 
-export default router
-
+export default router;

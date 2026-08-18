@@ -1,26 +1,37 @@
-import Landing from '../components/homescreen/Landing'
-import Login from '../components/homescreen/Login'
+import { createBrowserRouter, RouterProvider, Outlet } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
 
-function App() {
+// Pages
+import Landing from '../src/pages/LandingPage';
+import Login from '../src/pages/LoginPage';
+import RegisterUser from '../src/pages/RegisterPage';
+import ClassList from '../src/pages/ClassList';
+
+// Guards
+import ProtectedRoute from '../components/shared/ProtectedRoute';
+import PublicRoute from '../components/shared/PublicRoute';
+
+/**
+ * AppLayout preserves your exact "Phone Frame" UI and background.
+ * The <Outlet /> is where the router injects the current page.
+ */
+function AppLayout() {
   return (
-    <div className="w-full min-h-screen bg-[#082c4f] flex justify-center items-center sm:p-6">
+    <div className="w-full h-screen bg-[#082c4f] flex justify-center items-center sm:p-6 overflow-hidden">
       
-      {/* Phone Frame: Now uses 'overflow-hidden' to lock the shape */}
-      <div className="relative transform overflow-hidden w-full h-[100dvh] max-w-[430px] sm:h-[850px] sm:max-h-[90vh] bg-[#3fa5dd] sm:rounded-[2.5rem] sm:border-[8px] border-gray-900 shadow-2xl flex flex-col">
+      {/* Phone Frame Container */}
+      <div className="relative w-full h-full max-w-[430px] sm:h-[850px] sm:max-h-[90vh] bg-[#3fa5dd] sm:rounded-[2.5rem] sm:border-[8px] border-gray-900 shadow-2xl flex flex-col">
         
-        {/* SHARED FIXED BACKGROUND */}
-        {/* This stays completely still while the content scrolls */}
+        {/* FIXED BACKGROUND */}
         <img
           src="/untitled.png"
-          className="absolute inset-0 w-full h-full object-cover pointer-events-none"
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0"
           alt="App background"
         />
 
-        {/* SCROLLABLE CONTENT AREA */}
-        {/* This div scrolls over the background image */}
-        <div className="relative z-10 w-full h-full overflow-y-auto overflow-x-hidden flex flex-col">
-          <Landing/>
-          <Login/>
+        {/* CONTENT AREA - Router injects the active page here */}
+        <div className="relative z-10 w-full h-full overflow-y-auto overflow-x-hidden">
+          <Outlet />
         </div>
         
       </div>
@@ -29,4 +40,39 @@ function App() {
   );
 }
 
-export default App;
+// Router Configuration
+const router = createBrowserRouter([
+  {
+    // The Layout wraps ALL routes
+    element: <AppLayout />, 
+    children: [
+      {
+        path: "/",
+        element: <Landing />,
+      },
+      {
+        // PublicRoute kicks logged-in users away from Login/Register
+        element: <PublicRoute />,
+        children: [
+          { path: "/login", element: <Login /> },
+          { path: "/register", element: <RegisterUser /> },
+        ]
+      },
+      {
+        // ProtectedRoute prevents logged-out users from seeing classes
+        element: <ProtectedRoute />,
+        children: [
+          { path: "/class", element: <ClassList /> },
+        ]
+      }
+    ]
+  }
+]);
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
+  );
+}

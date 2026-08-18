@@ -1,15 +1,22 @@
-import 'dotenv/config';
+import "dotenv/config";
 import express from "express";
 import cookieParser from "cookie-parser";
+import cors from "cors";
 
 import userRoute from "./routes/user.route.js";
+import errorMiddleware from "./middlewares/error.middleware.js";
 
 const app = express();
+app.use(cors({
+  origin: process.env.FRONTEND_URL,
+  credentials: true,
+}));
 
 const PORT = process.env.PORT ?? 3000;
 
 app.use(express.json());
-app.use(cookieParser())
+app.use(cookieParser());
+
 
 app.get("/", (req, res) => {
   res.end("Welcome to Api hub of Kimi No Na Wa");
@@ -21,6 +28,8 @@ app.use("/api/v1/user", userRoute);
 
 //dynamic route put below all static routes
 // app.get("/:shortCode", redirectToOriginalUrl);
+
+app.use(errorMiddleware)
 
 app.listen(PORT, () => {
   console.log(
