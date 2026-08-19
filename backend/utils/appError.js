@@ -3,10 +3,10 @@
  */
 class AppError extends Error {
   /**
-   * @param {string} message - The error message explanation
    * @param {number} statusCode - The HTTP status code (e.g., 400, 401, 404)
+   * @param {string} message - The error message explanation
    */
-  constructor(message, statusCode) {
+  constructor(statusCode, message) {
     // Pass the error message to the parent built-in Error class
     super(message);
 

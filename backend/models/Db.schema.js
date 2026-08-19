@@ -18,14 +18,18 @@ export const users = pgTable("users", {
   lastName: varchar("last_name", { length: 40 }),
   email: varchar("email", { length: 255 }).notNull().unique(),
   password: varchar("password", { length: 255 }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 export const classes = pgTable("classes", {
   id: uuid("id").defaultRandom().primaryKey(),
   className: varchar("class_name", { length: 50 }).notNull(),
   description: varchar("description", { length: 255 }),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 // The junction table: Tracks WHO is in the class and if they are an ADMIN
@@ -39,7 +43,9 @@ export const userClasses = pgTable(
       .notNull()
       .references(() => classes.id, { onDelete: "cascade" }),
     role: classRoleEnum("role").default("student").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
   },
   (t) => [primaryKey({ columns: [t.userId, t.classId] })],
 );
@@ -51,7 +57,9 @@ export const subjects = pgTable("subjects", {
     .references(() => classes.id, { onDelete: "cascade" }),
   subjectName: varchar("subject_name", { length: 50 }).notNull(),
   description: varchar("description", { length: 255 }),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 export const documents = pgTable("documents", {
@@ -65,7 +73,9 @@ export const documents = pgTable("documents", {
   documentName: varchar("document_name", { length: 255 }).notNull(),
   description: varchar("description", { length: 255 }),
   filePath: varchar("file_path", { length: 512 }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
 });
 
 // -----------------------------------------------------------------------------

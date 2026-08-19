@@ -1,7 +1,6 @@
 export default function Landing() {
   return (
     <div className="w-full h-full flex flex-col ">
-      
       {/* NAVBAR */}
       <div className="flex justify-center items-center pt-6 px-4">
         <p className="text-white font-manrope text-2xl font-bold tracking-[0.1em]">
@@ -29,7 +28,6 @@ export default function Landing() {
           </p>
         </button>
       </div>
-
     </div>
   );
 }

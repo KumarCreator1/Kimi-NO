@@ -1,5 +1,5 @@
-import { Navigate, Outlet } from 'react-router-dom';
-import { useAuth } from '../../src/contexts/AuthContext';
+import { Navigate, Outlet } from "react-router-dom";
+import { useAuth } from "../../src/contexts/AuthContext";
 
 export default function PublicRoute() {
   const { user, isLoading } = useAuth();

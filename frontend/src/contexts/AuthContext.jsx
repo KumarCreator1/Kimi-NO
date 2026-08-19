@@ -1,5 +1,5 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import { createContext, useContext, useState, useEffect } from "react";
+import axios from "axios";
 
 const AuthContext = createContext();
 
@@ -13,17 +13,21 @@ export function AuthProvider({ children }) {
         // This endpoint should verify the HttpOnly cookie and return user details
         // withCredentials ensures the cookie is sent automatically
         const response = await axios.get(
-          `${import.meta.env.VITE_BACKEND_URL}/api/v1/user/me`, 
-          { withCredentials: true }
+          `${import.meta.env.VITE_BACKEND_URL}/api/v1/user/me`,
+          { withCredentials: true },
         );
-        setUser(response.data.user);
+
+        const loggedInUser = response.data?.data?.user;
+        console.log("loggedin user", loggedInUser);
+
+        setUser(loggedInUser);
       } catch (error) {
         setUser(null);
       } finally {
         setIsLoading(false);
       }
     };
-    
+
     checkAuth();
   }, []);
 

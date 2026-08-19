@@ -1,4 +1,4 @@
-import 'dotenv/config';
+import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
 // console.log("DATABASE_URL:drizzle.config", process.env.DATABASE_URL);
 export default defineConfig({
