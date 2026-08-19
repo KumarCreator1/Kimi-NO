@@ -132,7 +132,9 @@ const loginUser = async (req, res) => {
     .where(eq(users.email, email))
     .limit(1);
 
-  if (!user || comparePassword(password, user.password) === false) {
+  const isPasswordValid = user ? await comparePassword(password, user.password) : false;
+
+  if (!user || !isPasswordValid) {
     throw new AppError(401, "Invalid email or password");
   }
 
