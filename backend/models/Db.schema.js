@@ -17,7 +17,7 @@ import { relations } from "drizzle-orm";
 // ──────────────────────────────────────────────────────────
 // Custom Postgres types Drizzle doesn't ship natively
 // ──────────────────────────────────────────────────────────
-const tsvector = customType<{ data: string }>({
+const tsvector = customType({
   dataType() {
     return "tsvector";
   },
@@ -25,11 +25,11 @@ const tsvector = customType<{ data: string }>({
 
 // pgvector — requires `CREATE EXTENSION IF NOT EXISTS vector;` in a migration.
 // 768 dims = Gemini text-embedding-004. Change if you switch models.
-const vector = customType<{ data: number[]; driverData: string }>({
+const vector = customType({
   dataType() {
     return "vector(768)";
   },
-  toDriver(value: number[]) {
+  toDriver(value) {
     return `[${value.join(",")}]`;
   },
 });
@@ -95,7 +95,7 @@ export const refreshTokens = pgTable(
   (t) => [
     uniqueIndex("refresh_tokens_hash_uidx").on(t.tokenHash),
     index("refresh_tokens_user_idx").on(t.userId),
-  ]
+  ],
 );
 
 // ──────────────────────────────────────────────────────────
@@ -116,7 +116,7 @@ export const passwordResetTokens = pgTable(
       .defaultNow()
       .notNull(),
   },
-  (t) => [uniqueIndex("password_reset_tokens_hash_uidx").on(t.tokenHash)]
+  (t) => [uniqueIndex("password_reset_tokens_hash_uidx").on(t.tokenHash)],
 );
 
 // ──────────────────────────────────────────────────────────
@@ -164,7 +164,7 @@ export const userClasses = pgTable(
   (t) => [
     primaryKey({ columns: [t.userId, t.classId] }),
     index("user_classes_class_idx").on(t.classId),
-  ]
+  ],
 );
 
 // ──────────────────────────────────────────────────────────
@@ -187,9 +187,7 @@ export const subjects = pgTable(
       .notNull()
       .$onUpdate(() => new Date()),
   },
-  (t) => [
-    uniqueIndex("subjects_class_name_uidx").on(t.classId, t.subjectName),
-  ]
+  (t) => [uniqueIndex("subjects_class_name_uidx").on(t.classId, t.subjectName)],
 );
 
 // ──────────────────────────────────────────────────────────
@@ -248,7 +246,7 @@ export const documents = pgTable(
     aiTitle: text("ai_title"), // suitable renamed title
     aiSummary: text("ai_summary"), // unbounded — a generated summary
     // shouldn't be capped at 255 chars the way a user-typed description is
-    topics: jsonb("topics").$type<string[]>().default([]),
+    topics: jsonb("topics").default([]),
     // "all docs tagged X" is `WHERE topics @> '["X"]'`, made fast by the
     // GIN index below — no need for a normalized topics table at this scale
 
@@ -284,7 +282,7 @@ export const documents = pgTable(
     // the initial migration):
     // CREATE INDEX documents_embedding_idx ON documents
     //   USING hnsw (embedding vector_cosine_ops);
-  ]
+  ],
 );
 
 // ──────────────────────────────────────────────────────────
@@ -312,9 +310,9 @@ export const documentChunks = pgTable(
     index("document_chunks_document_idx").on(t.documentId),
     uniqueIndex("document_chunks_doc_index_uidx").on(
       t.documentId,
-      t.chunkIndex
+      t.chunkIndex,
     ),
-  ]
+  ],
 );
 
 // ──────────────────────────────────────────────────────────
@@ -335,7 +333,7 @@ export const requests = pgTable(
     targetType: text("target_type"), // "user_class" | "document" | null
     targetId: uuid("target_id"), // id within targetType's table; nullable
 
-    payload: jsonb("payload").$type<Record<string, unknown>>().default({}),
+    payload: jsonb("payload").default({}),
 
     // nullable: onDelete "set null" means a deleted requester's request
     // history survives (requestedBy becomes null) instead of the delete
@@ -358,7 +356,7 @@ export const requests = pgTable(
   (t) => [
     index("requests_class_status_idx").on(t.classId, t.status),
     index("requests_target_idx").on(t.targetType, t.targetId),
-  ]
+  ],
 );
 
 // ──────────────────────────────────────────────────────────
@@ -387,7 +385,7 @@ export const passwordResetTokensRelations = relations(
       fields: [passwordResetTokens.userId],
       references: [users.id],
     }),
-  })
+  }),
 );
 
 export const classesRelations = relations(classes, ({ one, many }) => ({

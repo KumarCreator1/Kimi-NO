@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import cors from "cors";
 
 import userRoute from "./routes/user.route.js";
+import classRoute from "./routes/class.route.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
 
 const app = express();
@@ -25,6 +26,7 @@ app.get("/", (req, res) => {
 
 //routes Routers
 app.use("/api/v1/user", userRoute);
+app.use("/api/v1/class", classRoute);
 // app.use("/url", urlRoute);
 
 //dynamic route put below all static routes

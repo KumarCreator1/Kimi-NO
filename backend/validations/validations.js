@@ -31,20 +31,6 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-export const createClassSchema = z.object({
-  className: z
-    .string()
-    .trim()
-    .min(1, "Class name is required")
-    .max(50, "Class name cannot exceed 50 characters"),
-  description: z
-    .string()
-    .trim()
-    .max(255, "Description cannot exceed 255 characters")
-    .optional()
-    .nullable(),
-});
-
 export const addUserToClassSchema = z.object({
   userId: uuidSchema,
   classId: uuidSchema,
@@ -62,4 +48,53 @@ export const createSubjectSchema = z.object({
     .max(255, "Description cannot exceed 255 characters")
     .optional()
     .nullable(),
+});
+
+////===============================================//////////////////////////////////////////////////////////////
+
+// ──────────────────────────────────────────────────────────
+// NOTE: this file only contains schemas for the class endpoints.
+// I don't have the content of your existing validations.js
+// (registerSchema, loginSchema, etc.) — paste it and I'll merge these
+// in properly instead of you doing it by hand.
+// ──────────────────────────────────────────────────────────
+
+const classNameField = z
+  .string()
+  .trim()
+  .min(1, "Class name is required")
+  .max(50, "Class name must be at most 50 characters");
+
+const descriptionField = z
+  .string()
+  .trim()
+  .max(255, "Description must be at most 255 characters")
+  .optional();
+
+export const createClassSchema = z.object({
+  className: classNameField,
+  description: descriptionField,
+});
+
+export const updateClassSchema = z
+  .object({
+    className: classNameField.optional(),
+    description: descriptionField,
+  })
+  .refine(
+    (data) => data.className !== undefined || data.description !== undefined,
+    { message: "Provide at least one of className or description to update" },
+  );
+
+export const classIdParamSchema = z.object({
+  classId: z.string().uuid("Invalid class id"),
+});
+
+export const addMemberSchema = z.object({
+  email: z.string().trim().toLowerCase().email("Invalid email address"),
+});
+
+export const memberIdParamSchema = z.object({
+  classId: z.string().uuid("Invalid class id"),
+  memberId: z.string().uuid("Invalid member id"),
 });

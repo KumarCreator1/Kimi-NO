@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import db from "../db/connectDb.js";
 import ms from "ms";
 import { users } from "../models/Db.schema.js";
-import { registerSchema } from "../validations/validations.js";
+import { registerSchema, loginSchema } from "../validations/validations.js";
 import {
   hashPassword,
   comparePassword,
@@ -112,19 +112,21 @@ const getCurrentUser = asyncHandler(async (req, res) => {
   const { password, ...userWithoutPassword } = currentUser;
 
   // The AuthContext expects response.data.user
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        { user: userWithoutPassword },
-        "Current user fetched successfully",
-      ),
-    );
+  return new ApiResponse(
+    200,
+    { user: userWithoutPassword },
+    "Current user fetched successfully",
+  ).send(res);
 });
 
 const loginUser = async (req, res) => {
-  const { email, password } = req.body;
+  const result = loginSchema.safeParse(req.body);
+  if (!result.success) {
+    const errorMessages = result.error.issues.map((err) => err.message);
+    throw new AppError(400, errorMessages.join(", "));
+  }
+
+  const { email, password } = result.data;
 
   const [user] = await db
     .select()
@@ -132,7 +134,9 @@ const loginUser = async (req, res) => {
     .where(eq(users.email, email))
     .limit(1);
 
-  const isPasswordValid = user ? await comparePassword(password, user.password) : false;
+  const isPasswordValid = user
+    ? await comparePassword(password, user.password)
+    : false;
 
   if (!user || !isPasswordValid) {
     throw new AppError(401, "Invalid email or password");
@@ -162,7 +166,6 @@ const loginUser = async (req, res) => {
 
   const userData = {
     id: user.id,
-    fullName: user.fullName,
     email: user.email,
   };
 
@@ -183,4 +186,68 @@ const logoutUser = async (req, res) => {
   return new ApiResponse(200, null, "User logged out successfully").send(res);
 };
 
-export { registerUser, loginUser, logoutUser, getCurrentUser };
+const refreshAccessToken = async (req, res) => {
+  const incomingRefreshToken = req.cookies?.refreshToken;
+
+  if (!incomingRefreshToken) {
+    throw new AppError(401, "Unauthorized request: no refresh token provided");
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(
+      incomingRefreshToken,
+      process.env.REFRESH_TOKEN_SECRET,
+    );
+  } catch (error) {
+    throw new AppError(
+      401,
+      "Refresh token expired or invalid, please login again",
+    );
+  }
+
+  // Re-check the DB instead of trusting the token payload — covers a user
+  // refresh is the infrequent path where the extra query is worth it.
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.id, decoded.id))
+    .limit(1);
+
+  if (!user) {
+    throw new AppError(401, "User no longer exists, please login again");
+  }
+
+  const accessToken = generateAccessToken({
+    id: user.id,
+    email: user.email,
+    firstName: user.firstName,
+  });
+
+  res.cookie("accessToken", accessToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: ms(process.env.ACCESS_TOKEN_EXPIRY),
+  });
+
+  // NOTE: this does not rotate the refresh token or check it against a
+  // stored/revoked list — because there's nothing in the DB to check yet.
+  // Once refreshTokens is wired in, upgrade this to: look up the token by
+  // hash, reject if revoked, issue + persist a new refresh token, revoke
+  // the old one (rotation), and treat a reused old token as theft (revoke
+  // the whole session family). None of that changes this endpoint's
+  // shape — it's additions here, not a rewrite.
+
+  return new ApiResponse(200, null, "Access token refreshed successfully").send(
+    res,
+  );
+};
+
+export {
+  registerUser,
+  loginUser,
+  logoutUser,
+  getCurrentUser,
+  refreshAccessToken,
+};
