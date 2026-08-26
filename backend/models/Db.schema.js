@@ -122,26 +122,35 @@ export const passwordResetTokens = pgTable(
 // ──────────────────────────────────────────────────────────
 // classes
 // ──────────────────────────────────────────────────────────
-export const classes = pgTable("classes", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id") // creator; class-level admin by default
-    .notNull()
-    // RESTRICT, not cascade: this class is shared with other members —
-    // deleting the creator's account must not silently wipe every other
-    // member's subjects/documents. Deleting a user who still owns a class
-    // fails until ownership is explicitly transferred (or the class is
-    // deleted on purpose).
-    .references(() => users.id, { onDelete: "restrict" }),
-  className: varchar("class_name", { length: 50 }).notNull(),
-  description: varchar("description", { length: 255 }),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .defaultNow()
-    .notNull()
-    .$onUpdate(() => new Date()),
-});
+export const classes = pgTable(
+  "classes",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id") // creator; class-level admin by default
+      .notNull()
+      // RESTRICT, not cascade: this class is shared with other members —
+      // deleting the creator's account must not silently wipe every other
+      // member's subjects/documents. Deleting a user who still owns a class
+      // fails until ownership is explicitly transferred (or the class is
+      // deleted on purpose).
+      .references(() => users.id, { onDelete: "restrict" }),
+    className: varchar("class_name", { length: 50 }).notNull(),
+    description: varchar("description", { length: 255 }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .defaultNow()
+      .notNull()
+      .$onUpdate(() => new Date()),
+  },
+  (t) => [
+    // scoped to the CREATOR, not global — a thousand different people can
+    // all have a class named "Data Structures"; one person just can't have
+    // two of their own
+    uniqueIndex("classes_user_classname_uidx").on(t.userId, t.className),
+  ],
+);
 
 // ──────────────────────────────────────────────────────────
 // user_classes — composite PK (yours): the (userId, classId) pair IS

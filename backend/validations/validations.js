@@ -98,3 +98,13 @@ export const memberIdParamSchema = z.object({
   classId: z.string().uuid("Invalid class id"),
   memberId: z.string().uuid("Invalid member id"),
 });
+
+// Document upload validators
+export const createDocumentSchema = z.object({
+  subjectId: z.string().uuid("Invalid subject id"),
+});
+
+export const documentIdParamSchema = z.object({
+  classId: z.string().uuid("Invalid class id"),
+  documentId: z.string().uuid("Invalid document id"),
+});
