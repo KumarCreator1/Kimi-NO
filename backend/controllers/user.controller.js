@@ -12,6 +12,7 @@ import {
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiResponse from "../utils/apiResponse.js";
 import AppError from "../utils/appError.js";
+import { tr } from "zod/v4/locales";
 
 const registerUser = async (req, res) => {
   const result = registerSchema.safeParse(req.body);
@@ -65,14 +66,14 @@ const registerUser = async (req, res) => {
 
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
     sameSite: "none",
     maxAge: ms(process.env.ACCESS_TOKEN_EXPIRY), // Convert to milliseconds
   });
 
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
     sameSite: "none",
     maxAge: ms(process.env.REFRESH_TOKEN_EXPIRY), // Convert to milliseconds
   });
@@ -152,14 +153,14 @@ const loginUser = async (req, res) => {
 
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
     sameSite: "none",
     maxAge: ms(process.env.ACCESS_TOKEN_EXPIRY), // Convert to milliseconds
   });
 
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
     sameSite: "none",
     maxAge: ms(process.env.REFRESH_TOKEN_EXPIRY), // Convert to milliseconds
   });
@@ -226,7 +227,7 @@ const refreshAccessToken = async (req, res) => {
 
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: true,
     sameSite: "none",
     maxAge: ms(process.env.ACCESS_TOKEN_EXPIRY),
   });
