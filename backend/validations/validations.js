@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const uuidSchema = z.string().uuid("Invalid UUID format");
+export const uuidSchema = z.uuid("Invalid UUID format");
 
 export const classRoleEnum = z.enum(["student", "teacher", "admin"]);
 
@@ -50,6 +50,33 @@ export const createSubjectSchema = z.object({
     .nullable(),
 });
 
+export const updateSubjectSchema = z
+  .object({
+    subjectName: z
+      .string()
+      .trim()
+      .min(1, "Subject name is required")
+      .max(50, "Subject name cannot exceed 50 characters")
+      .optional(),
+    description: z
+      .string()
+      .trim()
+      .max(255, "Description cannot exceed 255 characters")
+      .optional()
+      .nullable(),
+  })
+  .refine(
+    (data) => data.subjectName !== undefined || data.description !== undefined,
+    {
+      message: "Provide at least one of subjectName or description to update",
+    },
+  );
+
+export const subjectIdParamSchema = z.object({
+  classId: uuidSchema,
+  subjectId: uuidSchema,
+});
+
 ////===============================================//////////////////////////////////////////////////////////////
 
 // ──────────────────────────────────────────────────────────
@@ -87,24 +114,24 @@ export const updateClassSchema = z
   );
 
 export const classIdParamSchema = z.object({
-  classId: z.string().uuid("Invalid class id"),
+  classId: z.uuid("Invalid class id"),
 });
 
 export const addMemberSchema = z.object({
-  email: z.string().trim().toLowerCase().email("Invalid email address"),
+  email: z.email("Invalid email address"),
 });
 
 export const memberIdParamSchema = z.object({
-  classId: z.string().uuid("Invalid class id"),
-  memberId: z.string().uuid("Invalid member id"),
+  classId: z.uuid("Invalid class id"),
+  memberId: z.uuid("Invalid member id"),
 });
 
 // Document upload validators
 export const createDocumentSchema = z.object({
-  subjectId: z.string().uuid("Invalid subject id"),
+  subjectId: z.uuid("Invalid subject id"),
 });
 
 export const documentIdParamSchema = z.object({
-  classId: z.string().uuid("Invalid class id"),
-  documentId: z.string().uuid("Invalid document id"),
+  classId: z.uuid("Invalid class id"),
+  documentId: z.uuid("Invalid document id"),
 });

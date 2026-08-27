@@ -13,13 +13,16 @@ import AppError from "../utils/appError.js";
 // POST /api/v1/class/:classId/subject
 // Requires checkClassRole() — any member.
 const createSubject = async (req, res) => {
+  console.log("Received request to create subject:", req.body);
   const parsed = createSubjectSchema.safeParse(req.body);
   if (!parsed.success) {
+    console.error("Validation error:", parsed.error.issues);
     throw new AppError(400, parsed.error.issues[0].message);
   }
 
   const { classId } = req; // set by checkClassRole
   const { subjectName, description } = parsed.data;
+  console.log("Creating subject:", { classId, subjectName, description });
 
   // onConflictDoNothing on the (classId, subjectName) unique index avoids
   // a check-then-insert race — two people naming a subject the same thing

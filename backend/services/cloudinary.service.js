@@ -27,6 +27,45 @@ async function uploadBuffer(buffer, filename, mimeType) {
   };
 }
 
+// Upload a raw Office document (DOC/DOCX) and ask Cloudinary's Aspose
+// add-on to convert it to PDF. Conversion happens asynchronously — this
+// call only confirms the raw file made it to Cloudinary, NOT that the
+// PDF exists yet. Use getConvertedPdfIfReady() to check/poll for it.
+async function uploadRawForConversion(buffer, filename, mimeType) {
+  const base64 = buffer.toString("base64");
+  const dataUri = `data:${mimeType};base64,${base64}`;
+
+  const res = await cloudinary.uploader.upload(dataUri, {
+    resource_type: "raw",
+    raw_convert: "aspose",
+    public_id: `documents/${Date.now()}_${filename}`,
+    folder: "kimi_no/documents",
+  });
+
+  return {
+    publicId: res.public_id, // the converted PDF will appear under this same public_id
+    rawUrl: res.secure_url,
+  };
+}
+
+// Returns the converted PDF's info if Aspose has finished, or null if
+// conversion is still pending. Throws on any other error (network,
+// auth, etc.) so the caller's retry/backoff can distinguish the two.
+async function getConvertedPdfIfReady(publicId) {
+  try {
+    const res = await cloudinary.api.resource(publicId, {
+      resource_type: "image", // Aspose lands the converted PDF here, same public_id
+    });
+    return { url: res.secure_url, bytes: res.bytes, format: res.format };
+  } catch (err) {
+    const httpCode = err?.http_code ?? err?.error?.http_code;
+    if (httpCode === 404) {
+      return null; // not converted yet
+    }
+    throw err;
+  }
+}
+
 async function downloadBuffer(url) {
   const response = await fetch(url);
   if (!response.ok) {
@@ -38,9 +77,15 @@ async function downloadBuffer(url) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-async function deleteByPublicId(publicId) {
+async function deleteByPublicId(publicId, resourceType = "auto") {
   if (!publicId) return;
-  await cloudinary.uploader.destroy(publicId, { resource_type: "auto" });
+  await cloudinary.uploader.destroy(publicId, { resource_type: resourceType });
 }
 
-export { uploadBuffer, downloadBuffer, deleteByPublicId };
+export {
+  uploadBuffer,
+  uploadRawForConversion,
+  getConvertedPdfIfReady,
+  downloadBuffer,
+  deleteByPublicId,
+};

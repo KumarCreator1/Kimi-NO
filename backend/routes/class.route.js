@@ -12,6 +12,7 @@ import {
   removeClassMember,
 } from "../controllers/class.controller.js";
 import documentRoute from "./document.route.js";
+import subjectRoute from "./subject.route.js";
 
 const router = express.Router();
 
@@ -44,5 +45,8 @@ router.delete(
 
 // mount document routes under /api/v1/class/:classId/document
 router.use("/:classId/document", documentRoute);
+
+// mount subject routes under /api/v1/class/:classId/subject
+router.use("/:classId/subject", subjectRoute);
 
 export default router;

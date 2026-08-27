@@ -261,6 +261,7 @@ export const documents = pgTable(
 
     status: docStatusEnum("status").default("processing").notNull(),
     processingError: text("processing_error"),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
 
     // keyword search — maintained by a Postgres trigger from ai_title +
     // ai_summary + topics (raw SQL migration, not expressible in Drizzle TS)
@@ -283,6 +284,11 @@ export const documents = pgTable(
   (t) => [
     index("documents_class_idx").on(t.classId),
     index("documents_subject_idx").on(t.subjectId),
+    index("documents_status_locked_created_idx").on(
+      t.status,
+      t.lockedAt,
+      t.createdAt,
+    ),
     index("documents_search_idx").using("gin", t.searchVector),
     index("documents_topics_idx").using("gin", t.topics),
     // cursor-friendly pagination for "recent notes in this subject"

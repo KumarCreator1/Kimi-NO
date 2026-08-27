@@ -5,92 +5,49 @@ const DOC_MIMES = new Set([
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 ]);
 
-function guessExtension(mimeType, originalName = "document") {
-  if (mimeType === "application/pdf") return ".pdf";
-  if (mimeType === "image/png") return ".png";
-  if (mimeType === "image/jpeg" || mimeType === "image/jpg") return ".jpg";
-  if (mimeType === "application/msword") return ".doc";
-  if (
-    mimeType ===
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-  )
-    return ".docx";
-  const dotIndex = originalName.lastIndexOf(".");
-  return dotIndex >= 0 ? originalName.slice(dotIndex) : "";
-}
-
+// returns true if mime type is in the supported document types set of (PDF, DOC, DOCX)
 function isSupportedDocumentMime(mimeType) {
   return mimeType === PDF_MIME || DOC_MIMES.has(mimeType);
 }
 
+// returns true if mime type is in the supported image types set of (PNG, JPEG, JPG)
 function isSupportedImageMime(mimeType) {
   return IMAGE_MIMES.has(mimeType);
 }
 
-async function convertDocumentToPdf({ buffer, mimeType, originalName }) {
-  if (mimeType === PDF_MIME) {
-    return {
-      buffer,
-      mimeType: PDF_MIME,
-      fileName: originalName.endsWith(".pdf")
-        ? originalName
-        : `${originalName}.pdf`,
-    };
-  }
-
-  if (!DOC_MIMES.has(mimeType)) {
-    throw new Error(`Unsupported document mime type: ${mimeType}`);
-  }
-
-  const conversionUrl = process.env.DOCUMENT_CONVERSION_URL;
-  if (!conversionUrl) {
-    throw new Error(
-      "DOCUMENT_CONVERSION_URL is required to convert DOC/DOCX uploads into PDF",
-    );
-  }
-
-  const response = await fetch(conversionUrl, {
-    method: "POST",
-    headers: {
-      "content-type": mimeType,
-      "x-original-name": originalName,
-    },
-    body: buffer,
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Document conversion failed with status ${response.status}`,
-    );
-  }
-
-  const pdfBuffer = Buffer.from(await response.arrayBuffer());
-  return {
-    buffer: pdfBuffer,
-    mimeType: PDF_MIME,
-    fileName: originalName.replace(/\.[^.]+$/, ".pdf"),
-  };
+// returns true if this mime type needs async DOCX->PDF conversion (via Cloudinary Aspose)
+function isConvertibleDocMime(mimeType) {
+  return DOC_MIMES.has(mimeType);
 }
 
-async function normalizeUploadToCanonicalFile({
-  buffer,
-  mimeType,
-  originalName,
-}) {
+// Classifies an upload and tells the controller which path to take.
+// Does NOT do any conversion itself — DOCX/DOC conversion is asynchronous,
+// handled by Cloudinary's Aspose add-on + conversion.worker.js polling.
+//
+// Returns one of:
+//   { kind: "image", buffer, mimeType, fileName }
+//   { kind: "pdf",   buffer, mimeType, fileName }   -- fileName forced to end in .pdf
+//   { kind: "needs_conversion", buffer, mimeType, fileName }
+//
+// Throws if mimeType isn't supported at all.
+function classifyUpload({ buffer, mimeType, originalName }) {
   if (isSupportedImageMime(mimeType)) {
+    return { kind: "image", buffer, mimeType, fileName: originalName };
+  }
+
+  if (mimeType === PDF_MIME) {
+    const fileName = originalName.endsWith(".pdf")
+      ? originalName
+      : `${originalName}.pdf`;
+    return { kind: "pdf", buffer, mimeType, fileName };
+  }
+
+  if (isConvertibleDocMime(mimeType)) {
     return {
+      kind: "needs_conversion",
       buffer,
       mimeType,
       fileName: originalName,
-      kind: "image",
-    };
-  }
-
-  if (isSupportedDocumentMime(mimeType)) {
-    const pdf = await convertDocumentToPdf({ buffer, mimeType, originalName });
-    return {
-      ...pdf,
-      kind: "document",
     };
   }
 
@@ -98,8 +55,8 @@ async function normalizeUploadToCanonicalFile({
 }
 
 export {
-  normalizeUploadToCanonicalFile,
+  classifyUpload,
   isSupportedDocumentMime,
   isSupportedImageMime,
-  guessExtension,
+  isConvertibleDocMime,
 };
