@@ -69,6 +69,11 @@ async function getConvertedPdfIfReady(publicId) {
 async function downloadBuffer(url) {
   const response = await fetch(url);
   if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error(
+        "Cloudinary returned 401 Unauthorized. By default, Cloudinary disables PDF delivery for new free accounts. Please go to your Cloudinary Dashboard -> Settings -> Security -> and check 'Allow delivery of PDF and ZIP files'.",
+      );
+    }
     throw new Error(
       `Failed to download file from Cloudinary: ${response.status}`,
     );

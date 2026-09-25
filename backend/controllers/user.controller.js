@@ -170,8 +170,6 @@ const loginUser = async (req, res) => {
     email: user.email,
   };
 
-  console.log(userData);
-
   return new ApiResponse(
     200,
     { user: userData },

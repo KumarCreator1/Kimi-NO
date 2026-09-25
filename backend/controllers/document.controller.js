@@ -1,6 +1,11 @@
 import multer from "multer";
 import db from "../db/connectDb.js";
-import { documents, subjects, users } from "../models/Db.schema.js";
+import {
+  documents,
+  subjects,
+  users,
+  documentChunks,
+} from "../models/Db.schema.js";
 import { eq, and, isNull } from "drizzle-orm";
 import ApiResponse from "../utils/apiResponse.js";
 import AppError from "../utils/appError.js";
@@ -8,12 +13,74 @@ import {
   uploadBuffer,
   uploadRawForConversion,
   deleteByPublicId,
+  getConvertedPdfIfReady,
+  downloadBuffer,
 } from "../services/cloudinary.service.js";
 import { classifyUpload } from "../services/documentNormalization.service.js";
+import { enrichDocumentFromFile } from "../services/llm.service.js";
 import {
   createDocumentSchema,
   documentIdParamSchema,
 } from "../validations/validations.js";
+
+const processEnrichmentAsync = async (docId) => {
+  try {
+    let [doc] = await db
+      .select()
+      .from(documents)
+      .where(eq(documents.id, docId))
+      .limit(1);
+
+    if (!doc) return;
+
+    if (doc.mimeType.startsWith("image/")) {
+      await db
+        .update(documents)
+        .set({ status: "ready", isAiEnriched: true })
+        .where(eq(documents.id, docId));
+      return;
+    }
+
+    const rawBuffer = await downloadBuffer(doc.filePath);
+    const llm = await enrichDocumentFromFile({
+      fileBuffer: rawBuffer,
+      mimeType: doc.mimeType,
+      fileName: doc.documentName,
+    });
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(documents)
+        .set({
+          aiTitle: llm.aiTitle,
+          aiSummary: llm.aiSummary,
+          topics: llm.topics,
+          isAiEnriched: true,
+          status: "ready",
+          processingError: null,
+        })
+        .where(eq(documents.id, docId));
+
+      if (Array.isArray(llm.chunks) && llm.chunks.length > 0) {
+        const rows = llm.chunks.map((c) => ({
+          documentId: docId,
+          chunkIndex: c.index,
+          content: c.content,
+        }));
+        await tx.insert(documentChunks).values(rows);
+      }
+    });
+  } catch (err) {
+    console.error("processEnrichmentAsync error:", err);
+    await db
+      .update(documents)
+      .set({
+        processingError: err.message ? err.message.slice(0, 500) : "AI Error",
+        status: "failed",
+      })
+      .where(eq(documents.id, docId));
+  }
+};
 
 const ALLOWED_UPLOAD_MIMES = new Set([
   "application/pdf",
@@ -25,15 +92,14 @@ const ALLOWED_UPLOAD_MIMES = new Set([
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB — adjust to your real cap
+  limits: { fileSize: 25 * 1024 * 1024 }, // 25MB
   fileFilter: (req, file, cb) => {
     cb(null, ALLOWED_UPLOAD_MIMES.has(file.mimetype));
   },
 });
 
-// POST /api/v1/class/:classId/document
+// @desc  POST /api/v1/class/:classId/document
 const uploadDocument = async (req, res) => {
-  // multer handled file in req.file
   const file = req.file;
   if (!file) {
     throw new AppError(
@@ -42,19 +108,15 @@ const uploadDocument = async (req, res) => {
     );
   }
 
-  // validate body (subjectId)
-  const parsed = createDocumentSchema.safeParse(req.body);
+  const parsed = createDocumentSchema.safeParse(req.params);
   if (!parsed.success) {
     throw new AppError(400, parsed.error.issues[0].message);
   }
 
   const { subjectId } = parsed.data;
-  const classId = req.classId || req.params.classId; // checkClassRole attaches classId
+  const classId = req.classId || req.params.classId;
   const uploadedBy = req.user.id;
 
-  // subjectId must actually belong to classId — otherwise a member of one
-  // class could file a document under a subject from a class they have no
-  // access to, and the classId-sync trigger would "correct" it silently.
   const [subject] = await db
     .select()
     .from(subjects)
@@ -68,17 +130,21 @@ const uploadDocument = async (req, res) => {
   let uploadedResourceType = "auto";
 
   try {
+    console.log("trying to hit cloudinary TRY BLock execution.....");
+
     const classified = classifyUpload({
       buffer: file.buffer,
       mimeType: file.mimetype,
       originalName: file.originalname,
     });
+    console.log("classified:", classified);
 
+    // ────────────────────────────────────────────────────────
+    // PATH A: DOCX requires Async Aspose Conversion
+    // ────────────────────────────────────────────────────────
     if (classified.kind === "needs_conversion") {
-      // DOCX/DOC path: upload raw to Cloudinary, mark "converting", and let
-      // conversion.worker.js poll Cloudinary's Aspose add-on until the PDF
-      // exists. It will flip status -> "processing" once ready, which is
-      // what enrichment.worker.js watches for.
+      console.log("conversion needed");
+
       uploadedResourceType = "raw";
       const raw = await uploadRawForConversion(
         classified.buffer,
@@ -94,11 +160,11 @@ const uploadDocument = async (req, res) => {
           subjectId,
           uploadedBy,
           documentName: classified.fileName,
-          filePath: raw.rawUrl, // raw DOCX url for now; poller overwrites with the PDF url
-          fileSize: null, // unknown until conversion completes
-          mimeType: classified.mimeType, // still the original docx mime for now
+          filePath: raw.rawUrl,
+          fileSize: null,
+          mimeType: classified.mimeType,
           conversionPublicId: raw.publicId,
-          status: "converting",
+          status: "converting", // Frontend will poll checkConversionStatus
         })
         .returning();
 
@@ -114,12 +180,16 @@ const uploadDocument = async (req, res) => {
       ).send(res);
     }
 
-    // PDF / image path: unchanged synchronous flow, straight to "processing"
+    // ────────────────────────────────────────────────────────
+    // PATH B: PDF/Image is already good to go
+    // ────────────────────────────────────────────────────────
     uploadRes = await uploadBuffer(
       classified.buffer,
       classified.fileName,
       classified.mimeType,
     );
+
+    console.log("no conversion needed UPLOADres:", uploadRes);
 
     const [newDoc] = await db
       .insert(documents)
@@ -131,7 +201,7 @@ const uploadDocument = async (req, res) => {
         filePath: uploadRes.url,
         fileSize: uploadRes.bytes,
         mimeType: classified.mimeType,
-        status: "processing",
+        status: "converted", // <-- CHANGED: Skips "converting" phase entirely, jumps to converted (AI Enrichment phase)
       })
       .returning();
 
@@ -140,21 +210,147 @@ const uploadDocument = async (req, res) => {
       throw new AppError(500, "Failed to persist document metadata");
     }
 
-    // worker will enrich this later
+    processEnrichmentAsync(newDoc.id).catch((err) =>
+      console.error("Async enrichment failed:", err),
+    );
+
     return new ApiResponse(
       202,
       { document: newDoc },
-      "Document uploaded, processing",
+      "Document uploaded, AI processing started",
     ).send(res);
   } catch (error) {
+    //Rollback the Cloudinary upload if DB insert fails
     if (uploadRes?.publicId) {
       await deleteByPublicId(uploadRes.publicId, uploadedResourceType).catch(
-        () => {},
+        (cleanupErr) => console.error("Cloudinary cleanup failed:", cleanupErr),
       );
     }
-    if (error instanceof AppError) throw error;
-    throw new AppError(500, "Failed to upload document");
+    throw error;
   }
+};
+
+// @desc  GET /api/v1/class/:classId/document/:documentId/conversion-status
+// Automated polling route to check if Aspose is done with a DOCX
+const checkConversionStatus = async (req, res) => {
+  const { classId, documentId } = req.params;
+
+  let [doc] = await db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.id, documentId), eq(documents.classId, classId)))
+    .limit(1);
+
+  if (!doc) throw new AppError(404, "Document not found");
+
+  // If it's already converted/ready/failed, tell frontend to stop polling
+  if (doc.status !== "converting") {
+    return new ApiResponse(
+      200,
+      { document: doc },
+      "Conversion phase complete",
+    ).send(res);
+  }
+
+  // Safety Check: Has Aspose been stuck for more than 5 minutes?
+  const docAgeMinutes =
+    (Date.now() - new Date(doc.createdAt).getTime()) / 60000;
+  if (docAgeMinutes > 5) {
+    await db
+      .update(documents)
+      .set({
+        status: "failed",
+        processingError: "Document conversion timed out. File may be corrupt.",
+      })
+      .where(eq(documents.id, doc.id));
+
+    throw new AppError(422, "Conversion failed due to timeout.");
+  }
+
+  // Check Cloudinary Aspose status
+  const converted = await getConvertedPdfIfReady(doc.conversionPublicId);
+
+  if (!converted) {
+    // Return 202 so frontend knows to keep polling
+    return res.status(202).json({
+      status: "converting",
+      message: "Still converting to PDF.",
+    });
+  }
+
+  // Conversion finished!
+  const [updatedDoc] = await db
+    .update(documents)
+    .set({
+      filePath: converted.url,
+      fileSize: converted.bytes,
+      mimeType: "application/pdf",
+      status: "converted", // <-- Ready for AI Enrichment
+      processingError: null,
+    })
+    .where(eq(documents.id, doc.id))
+    .returning();
+
+  // Cleanup: Delete the raw DOCX from Cloudinary to save storage space
+  await deleteByPublicId(doc.conversionPublicId, "raw").catch(() => {});
+
+  processEnrichmentAsync(updatedDoc.id).catch((err) =>
+    console.error("Async enrichment failed:", err),
+  );
+
+  return new ApiResponse(
+    200,
+    { document: updatedDoc },
+    "Conversion complete, AI processing started",
+  ).send(res);
+};
+
+// @desc  POST /api/v1/class/:classId/document/:documentId/enrich
+// Manual trigger route for Gemini AI
+const enrichDocument = async (req, res) => {
+  console.log("enrichDocument called");
+  const { classId, documentId } = req.params;
+
+  let [doc] = await db
+    .select()
+    .from(documents)
+    .where(and(eq(documents.id, documentId), eq(documents.classId, classId)))
+    .limit(1);
+
+  if (!doc) throw new AppError(404, "Document not found");
+
+  if (doc.isAiEnriched) {
+    return new ApiResponse(
+      200,
+      { document: doc },
+      "Document is already enriched",
+    ).send(res);
+  }
+
+  if (doc.status === "converting" || doc.status === "converted") {
+    throw new AppError(
+      400,
+      "Cannot enrich. Document is currently converting or processing.",
+    );
+  }
+
+  // Set status to 'converted' so UI shows processing, then kick off async task!
+  await db
+    .update(documents)
+    .set({
+      status: "converted",
+      processingError: null,
+    })
+    .where(eq(documents.id, doc.id));
+
+  // Run async without awaiting
+  processEnrichmentAsync(doc.id).catch((err) =>
+    console.error("Manual async enrichment failed:", err),
+  );
+
+  return new ApiResponse(202, null, "AI Enrichment started in background").send(
+    res,
+  );
 };
 
 const getDocument = async (req, res) => {
@@ -248,7 +444,8 @@ const getDocumentViewData = async (req, res) => {
       document: doc,
       subject,
       uploader,
-      canViewInApp: doc.status === "ready" || doc.status === "processing",
+      // User can view the PDF as long as it's not still converting
+      canViewInApp: doc.status === "ready" || doc.status === "converted",
       canDownload: doc.status !== "converting",
       downloadedHintKey: `doc:${doc.id}`,
     },
@@ -256,7 +453,6 @@ const getDocumentViewData = async (req, res) => {
   ).send(res);
 };
 
-// Return the Cloudinary URL (signed handling is left to Cloudinary config)
 const downloadDocument = async (req, res) => {
   const parsed = documentIdParamSchema.safeParse(req.params);
   if (!parsed.success) {
@@ -288,6 +484,8 @@ const downloadDocument = async (req, res) => {
 export {
   upload,
   uploadDocument,
+  checkConversionStatus,
+  enrichDocument,
   getDocument,
   listDocuments,
   getDocumentViewData,

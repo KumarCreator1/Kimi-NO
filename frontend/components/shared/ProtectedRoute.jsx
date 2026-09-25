@@ -1,5 +1,6 @@
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../../src/contexts/AuthContext";
+import FunnyLoader from "./FunnyLoader";
 
 export default function ProtectedRoute() {
   const { user, isLoading } = useAuth();
@@ -7,8 +8,7 @@ export default function ProtectedRoute() {
   if (isLoading) {
     return (
       <div className="h-screen w-full bg-[#111418] flex items-center justify-center">
-        {/* Replace with your app's actual spinner or skeleton loader */}
-        <p className="text-white">Loading...</p>
+        <FunnyLoader />
       </div>
     );
   }

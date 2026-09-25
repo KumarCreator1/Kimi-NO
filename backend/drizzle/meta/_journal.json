@@ -15,6 +15,13 @@
       "when": 1786776182374,
       "tag": "0001_my_gemini_schema_",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787814468335,
+      "tag": "0002_schema_after_pivot_to_REST_for_Docs",
+      "breakpoints": true
     }
   ]
 }

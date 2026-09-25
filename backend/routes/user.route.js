@@ -14,16 +14,16 @@ const router = express.Router();
 // @desc    POST /api/v1/user/register
 router.post("/register", registerUser);
 
-//@desc    POST /api/v1/user/login
+// @desc    POST /api/v1/user/login
 router.post("/login", loginUser);
 
-//@desc    GET /api/v1/user/logout
+// @desc    POST /api/v1/user/logout (Fixed from GET to POST to match the router method)
 router.post("/logout", logoutUser);
 
 // @desc    POST /api/v1/user/refresh — reads the refreshToken cookie,
 router.post("/refresh", refreshAccessToken);
 
-//@desc    GET /api/v1/user/me
+// @desc    GET /api/v1/user/me
 router.get("/me", verifyJWT, getCurrentUser); // Protected route to get user profile
 
 export default router;

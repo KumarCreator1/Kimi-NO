@@ -10,6 +10,7 @@ import {
   primaryKey,
   uniqueIndex,
   index,
+  boolean,
   customType,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
@@ -38,11 +39,18 @@ const vector = customType({
 // Enums
 // ──────────────────────────────────────────────────────────
 export const classRoleEnum = pgEnum("class_role", ["admin", "member"]);
+
+// docx to pdf conversion in progress
+// Gemini enrichment in progress
+// enrichment done, ready for viewing
+// failure occured
 export const docStatusEnum = pgEnum("doc_status", [
-  "processing",
+  "converting",
+  "converted",
   "ready",
   "failed",
 ]);
+
 export const requestStatusEnum = pgEnum("request_status", [
   "pending",
   "approved",
@@ -259,9 +267,11 @@ export const documents = pgTable(
     // "all docs tagged X" is `WHERE topics @> '["X"]'`, made fast by the
     // GIN index below — no need for a normalized topics table at this scale
 
-    status: docStatusEnum("status").default("processing").notNull(),
+    status: docStatusEnum("status").default("converting").notNull(),
     processingError: text("processing_error"),
     lockedAt: timestamp("locked_at", { withTimezone: true }),
+    isAiEnriched: boolean("is_ai_enriched").default(false).notNull(),
+    conversionPublicId: varchar("conversion_public_id", { length: 255 }),
 
     // keyword search — maintained by a Postgres trigger from ai_title +
     // ai_summary + topics (raw SQL migration, not expressible in Drizzle TS)

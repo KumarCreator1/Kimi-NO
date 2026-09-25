@@ -14,7 +14,12 @@ import AppError from "../utils/appError.js";
 // Requires checkClassRole() — any member.
 const createSubject = async (req, res) => {
   console.log("Received request to create subject:", req.body);
-  const parsed = createSubjectSchema.safeParse(req.body);
+  // 1. Merge params and body together so Zod can see classId
+  const dataToValidate = {
+    ...req.body,
+    classId: req.params.classId, // Extract from URL path params
+  };
+  const parsed = createSubjectSchema.safeParse(dataToValidate);
   if (!parsed.success) {
     console.error("Validation error:", parsed.error.issues);
     throw new AppError(400, parsed.error.issues[0].message);
