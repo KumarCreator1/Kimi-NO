@@ -340,6 +340,16 @@ const removeClassMember = async (req, res) => {
     throw new AppError(404, "This user is not a member of this class");
   }
 
+  // Guard against removing the class creator/owner
+  const [classRecord] = await db
+    .select({ creatorId: classes.userId })
+    .from(classes)
+    .where(eq(classes.id, classId));
+
+  if (classRecord && memberId === classRecord.creatorId) {
+    throw new AppError(400, "Cannot remove the creator/owner of the class");
+  }
+
   // Guard against leaving the class with zero admins — count is cheap
   // and this path is rare (admin actions), so no need to optimize it away.
   if (target.role === "admin") {

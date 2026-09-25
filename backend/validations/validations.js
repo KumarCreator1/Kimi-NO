@@ -41,10 +41,12 @@ export const createSubjectSchema = z.object({
   classId: uuidSchema,
   subjectName: z
     .string()
+    .trim()
     .min(1, "Subject name is required")
     .max(50, "Subject name cannot exceed 50 characters"),
   description: z
     .string()
+    .trim()
     .max(255, "Description cannot exceed 255 characters")
     .optional()
     .nullable(),
@@ -120,6 +122,18 @@ export const memberIdParamSchema = z.object({
 // Document upload validators
 export const createDocumentSchema = z.object({
   subjectId: z.uuid("Invalid subject id"),
+  documentName: z
+    .string()
+    .trim()
+    .min(1, "Document name is required")
+    .max(255, "Document name cannot exceed 255 characters"),
+  filePath: z
+    .string()
+    .trim()
+    .url("Invalid document URL")
+    .max(512, "File path cannot exceed 512 characters"),
+  fileSize: z.number().int().positive().optional(),
+  mimeType: z.string().trim().max(50).optional(),
 });
 
 export const documentIdParamSchema = z.object({

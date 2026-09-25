@@ -303,11 +303,13 @@ const refreshAccessToken = async (req, res) => {
     throw new AppError(401, "User no longer exists, please login again");
   }
 
-  // Revoke the old refresh token (rotation)
-  await db
-    .update(refreshTokens)
-    .set({ revokedAt: new Date() })
-    .where(eq(refreshTokens.id, dbToken.id));
+  // Revoke the old refresh token (rotation) - only if not already revoked to prevent extending grace period
+  if (!dbToken.revokedAt) {
+    await db
+      .update(refreshTokens)
+      .set({ revokedAt: new Date() })
+      .where(eq(refreshTokens.id, dbToken.id));
+  }
 
   const accessToken = generateAccessToken({
     id: user.id,

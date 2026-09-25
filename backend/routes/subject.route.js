@@ -7,7 +7,7 @@ import {
   updateSubject,
   deleteSubject,
 } from "../controllers/subject.controller.js";
-// import documentRoute from "./document.route.js"; // Inherits document routing
+import documentRoute from "./document.route.js";
 
 // mergeParams to access :classId from parent route[cite: 3]
 const router = express.Router({ mergeParams: true });
@@ -30,6 +30,6 @@ router.patch("/:subjectId", checkClassRole("admin"), updateSubject);
 router.delete("/:subjectId", checkClassRole("admin"), deleteSubject);
 
 // Mount document routes under the specific subject to enforce class->subject->document hierarchy
-// router.use("/:subjectId/document", documentRoute);
+router.use("/:subjectId/document", documentRoute);
 
 export default router;

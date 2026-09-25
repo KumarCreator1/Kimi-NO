@@ -6,7 +6,7 @@ export const verifyJWT = asyncHandler(async (req, res, next) => {
   // Look for the token in the cookies (or fallback to the Authorization header)
   const token =
     req.cookies?.accessToken ||
-    req.header("Authorization")?.replace("Bearer ", "");
+    req.header("Authorization")?.replace(/^Bearer\s+/i, "");
 
   if (!token) {
     throw new AppError(401, "Unauthorized request: No token provided");
