@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export const uuidSchema = z.uuid("Invalid UUID format");
 
-export const classRoleEnum = z.enum(["student", "teacher", "admin"]);
+export const classRoleEnum = z.enum(["admin", "member"]);
 
 export const registerSchema = z.object({
   firstName: z
@@ -34,7 +34,7 @@ export const loginSchema = z.object({
 export const addUserToClassSchema = z.object({
   userId: uuidSchema,
   classId: uuidSchema,
-  role: classRoleEnum.default("student"),
+  role: classRoleEnum.default("member"),
 });
 
 export const createSubjectSchema = z.object({
@@ -76,15 +76,6 @@ export const subjectIdParamSchema = z.object({
   classId: uuidSchema,
   subjectId: uuidSchema,
 });
-
-////===============================================//////////////////////////////////////////////////////////////
-
-// ──────────────────────────────────────────────────────────
-// NOTE: this file only contains schemas for the class endpoints.
-// I don't have the content of your existing validations.js
-// (registerSchema, loginSchema, etc.) — paste it and I'll merge these
-// in properly instead of you doing it by hand.
-// ──────────────────────────────────────────────────────────
 
 const classNameField = z
   .string()

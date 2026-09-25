@@ -25,7 +25,7 @@ class ApiResponse {
     return res.status(this.statusCode).json({
       success: this.success,
       message: this.message,
-      ...(this.data && { data: this.data }), // Conditionally adds data key
+      ...(this.data !== undefined && { data: this.data }), // Conditionally adds data key
     });
   }
 }

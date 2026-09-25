@@ -14,6 +14,30 @@ const errorMiddleware = (err, req, res, next) => {
     });
   }
 
+  if (err?.name === "ZodError") {
+    return res.status(400).json({
+      success: false,
+      message: err.issues.map((i) => i.message).join(", "),
+      stack: process.env.NODE_ENV === "production" ? null : err.stack,
+    });
+  }
+
+  if (err.code === "23505") {
+    return res.status(400).json({
+      success: false,
+      message: "A record with that value already exists",
+      stack: process.env.NODE_ENV === "production" ? null : err.stack,
+    });
+  }
+
+  if (err.code === "22P02") {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid UUID format in database query",
+      stack: process.env.NODE_ENV === "production" ? null : err.stack,
+    });
+  }
+
   // If the error doesn't have a status code (like a random Node crash), default to 500
   const statusCode = err.statusCode || 500;
 

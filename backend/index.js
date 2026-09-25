@@ -22,7 +22,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.get("/", (req, res) => {
-  res.end("Welcome to Api hub of Kimi No Na Wa");
+  res.send("Welcome to Api hub of Kimi No Na Wa");
 });
 
 //routes Routers
@@ -32,6 +32,14 @@ app.use("/api/v1/class", classRoute);
 
 //dynamic route put below all static routes
 // app.get("/:shortCode", redirectToOriginalUrl);
+
+// 404 Catch-All Middleware
+app.use((req, res, next) => {
+  res.status(404).json({
+    success: false,
+    message: "Endpoint not found",
+  });
+});
 
 app.use(errorMiddleware);
 

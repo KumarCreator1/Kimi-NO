@@ -17,7 +17,7 @@ router.post("/register", registerUser);
 // @desc    POST /api/v1/user/login
 router.post("/login", loginUser);
 
-// @desc    POST /api/v1/user/logout (Fixed from GET to POST to match the router method)
+// @desc    POST /api/v1/user/logout
 router.post("/logout", logoutUser);
 
 // @desc    POST /api/v1/user/refresh — reads the refreshToken cookie,

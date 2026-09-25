@@ -1,7 +1,9 @@
 import { eq } from "drizzle-orm";
 import db from "../db/connectDb.js";
 import ms from "ms";
-import { users } from "../models/Db.schema.js";
+import jwt from "jsonwebtoken";
+import crypto from "crypto";
+import { users, refreshTokens } from "../models/Db.schema.js";
 import { registerSchema, loginSchema } from "../validations/validations.js";
 import {
   hashPassword,
@@ -12,7 +14,7 @@ import {
 import asyncHandler from "../utils/asyncHandler.js";
 import ApiResponse from "../utils/apiResponse.js";
 import AppError from "../utils/appError.js";
-import { tr } from "zod/v4/locales";
+import { getCookieOptions } from "../utils/cookieOptions.js";
 
 const registerUser = async (req, res) => {
   const result = registerSchema.safeParse(req.body);
@@ -64,19 +66,32 @@ const registerUser = async (req, res) => {
     email: newUser.email,
   });
 
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    maxAge: ms(process.env.ACCESS_TOKEN_EXPIRY), // Convert to milliseconds
+  // Store refresh token hash in database
+  const tokenHash = crypto
+    .createHash("sha256")
+    .update(refreshToken)
+    .digest("hex");
+  const expiresAt = new Date(Date.now() + ms(process.env.REFRESH_TOKEN_EXPIRY));
+
+  await db.insert(refreshTokens).values({
+    userId: newUser.id,
+    tokenHash,
+    userAgent: req.headers["user-agent"],
+    ipAddress: req.ip,
+    expiresAt,
   });
 
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    maxAge: ms(process.env.REFRESH_TOKEN_EXPIRY), // Convert to milliseconds
-  });
+  res.cookie(
+    "accessToken",
+    accessToken,
+    getCookieOptions(ms(process.env.ACCESS_TOKEN_EXPIRY)),
+  );
+
+  res.cookie(
+    "refreshToken",
+    refreshToken,
+    getCookieOptions(ms(process.env.REFRESH_TOKEN_EXPIRY)),
+  );
 
   const userData = {
     id: newUser.id,
@@ -151,23 +166,38 @@ const loginUser = async (req, res) => {
   });
   const refreshToken = generateRefreshToken({ id: user.id, email: user.email });
 
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    maxAge: ms(process.env.ACCESS_TOKEN_EXPIRY), // Convert to milliseconds
+  // Store refresh token hash in database
+  const tokenHash = crypto
+    .createHash("sha256")
+    .update(refreshToken)
+    .digest("hex");
+  const expiresAt = new Date(Date.now() + ms(process.env.REFRESH_TOKEN_EXPIRY));
+
+  await db.insert(refreshTokens).values({
+    userId: user.id,
+    tokenHash,
+    userAgent: req.headers["user-agent"],
+    ipAddress: req.ip,
+    expiresAt,
   });
 
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    maxAge: ms(process.env.REFRESH_TOKEN_EXPIRY), // Convert to milliseconds
-  });
+  res.cookie(
+    "accessToken",
+    accessToken,
+    getCookieOptions(ms(process.env.ACCESS_TOKEN_EXPIRY)),
+  );
+
+  res.cookie(
+    "refreshToken",
+    refreshToken,
+    getCookieOptions(ms(process.env.REFRESH_TOKEN_EXPIRY)),
+  );
 
   const userData = {
     id: user.id,
     email: user.email,
+    firstName: user.firstName,
+    lastName: user.lastName,
   };
 
   return new ApiResponse(
@@ -178,9 +208,24 @@ const loginUser = async (req, res) => {
 };
 
 const logoutUser = async (req, res) => {
+  const incomingRefreshToken = req.cookies?.refreshToken;
+
+  if (incomingRefreshToken) {
+    const tokenHash = crypto
+      .createHash("sha256")
+      .update(incomingRefreshToken)
+      .digest("hex");
+
+    // Revoke the token in the database
+    await db
+      .update(refreshTokens)
+      .set({ revokedAt: new Date() })
+      .where(eq(refreshTokens.tokenHash, tokenHash));
+  }
+
   // Clear the cookies
-  res.clearCookie("accessToken");
-  res.clearCookie("refreshToken");
+  res.clearCookie("accessToken", getCookieOptions());
+  res.clearCookie("refreshToken", getCookieOptions());
 
   return new ApiResponse(200, null, "User logged out successfully").send(res);
 };
@@ -205,8 +250,49 @@ const refreshAccessToken = async (req, res) => {
     );
   }
 
-  // Re-check the DB instead of trusting the token payload — covers a user
-  // refresh is the infrequent path where the extra query is worth it.
+  const tokenHash = crypto
+    .createHash("sha256")
+    .update(incomingRefreshToken)
+    .digest("hex");
+
+  // Check the DB to see if the token exists and isn't revoked
+  const [dbToken] = await db
+    .select()
+    .from(refreshTokens)
+    .where(eq(refreshTokens.tokenHash, tokenHash))
+    .limit(1);
+
+  if (!dbToken) {
+    throw new AppError(401, "Invalid refresh token");
+  }
+
+  if (dbToken.revokedAt) {
+    // Grace period check for concurrent refresh requests (e.g. 15 seconds)
+    const gracePeriodMs = 15000;
+    if (new Date() - new Date(dbToken.revokedAt) > gracePeriodMs) {
+      // Token reuse detected - revoke all tokens for this user as a security measure
+      await db
+        .update(refreshTokens)
+        .set({ revokedAt: new Date() })
+        .where(eq(refreshTokens.userId, dbToken.userId));
+
+      // Clear cookies since the family is compromised
+      res.clearCookie("accessToken", getCookieOptions());
+      res.clearCookie("refreshToken", getCookieOptions());
+
+      throw new AppError(
+        401,
+        "Token reuse detected, all sessions revoked. Please login again",
+      );
+    }
+  }
+
+  // Check if token in DB is expired
+  if (new Date() > dbToken.expiresAt) {
+    throw new AppError(401, "Refresh token expired, please login again");
+  }
+
+  // Re-check the DB instead of trusting the token payload
   const [user] = await db
     .select()
     .from(users)
@@ -217,26 +303,55 @@ const refreshAccessToken = async (req, res) => {
     throw new AppError(401, "User no longer exists, please login again");
   }
 
+  // Revoke the old refresh token (rotation)
+  await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date() })
+    .where(eq(refreshTokens.id, dbToken.id));
+
   const accessToken = generateAccessToken({
     id: user.id,
     email: user.email,
     firstName: user.firstName,
   });
 
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    maxAge: ms(process.env.ACCESS_TOKEN_EXPIRY),
+  const newRefreshToken = generateRefreshToken({
+    id: user.id,
+    email: user.email,
+  });
+  const newTokenHash = crypto
+    .createHash("sha256")
+    .update(newRefreshToken)
+    .digest("hex");
+  const newExpiresAt = new Date(
+    Date.now() + ms(process.env.REFRESH_TOKEN_EXPIRY),
+  );
+
+  // Persist the new refresh token
+  await db.insert(refreshTokens).values({
+    userId: user.id,
+    tokenHash: newTokenHash,
+    userAgent: req.headers["user-agent"],
+    ipAddress: req.ip,
+    expiresAt: newExpiresAt,
   });
 
-  // NOTE: this does not rotate the refresh token or check it against a
-  // stored/revoked list — because there's nothing in the DB to check yet.
-  // Once refreshTokens is wired in, upgrade this to: look up the token by
-  // hash, reject if revoked, issue + persist a new refresh token, revoke
-  // the old one (rotation), and treat a reused old token as theft (revoke
-  // the whole session family). None of that changes this endpoint's
-  // shape — it's additions here, not a rewrite.
+  res.cookie(
+    "accessToken",
+    accessToken,
+    getCookieOptions(ms(process.env.ACCESS_TOKEN_EXPIRY)),
+  );
+
+  res.cookie(
+    "refreshToken",
+    newRefreshToken,
+    getCookieOptions(ms(process.env.REFRESH_TOKEN_EXPIRY)),
+  );
+
+  // NOTE: this does rotate the refresh token and check it against a
+  // stored/revoked list. We look up the token by hash, reject if revoked,
+  // issue + persist a new refresh token, revoke the old one (rotation),
+  // and treat a reused old token as theft (revoke the whole session family).
 
   return new ApiResponse(200, null, "Access token refreshed successfully").send(
     res,
