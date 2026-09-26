@@ -6,6 +6,7 @@ import cors from "cors";
 import userRoute from "./routes/user.route.js";
 import classRoute from "./routes/class.route.js";
 import errorMiddleware from "./middlewares/error.middleware.js";
+import multer from "multer";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -20,6 +21,7 @@ app.use(
 const PORT = process.env.PORT ?? 3000;
 
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
 app.get("/", (req, res) => {

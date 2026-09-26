@@ -121,19 +121,21 @@ export const memberIdParamSchema = z.object({
 
 // Document upload validators
 export const createDocumentSchema = z.object({
-  subjectId: z.uuid("Invalid subject id"),
+  subjectId: z
+    .string({ required_error: "subjectId is required" })
+    .uuid("Invalid subject ID format"),
   documentName: z
-    .string()
+    .string({ required_error: "documentName is required" })
     .trim()
-    .min(1, "Document name is required")
-    .max(255, "Document name cannot exceed 255 characters"),
+    .min(1, "documentName cannot be empty")
+    .max(255, "documentName cannot exceed 255 characters"),
   filePath: z
-    .string()
+    .string({ required_error: "filePath is required (must be a valid URL to the document)" })
     .trim()
-    .url("Invalid document URL")
-    .max(512, "File path cannot exceed 512 characters"),
-  fileSize: z.number().int().positive().optional(),
-  mimeType: z.string().trim().max(50).optional(),
+    .url("Invalid document URL (e.g. https://res.cloudinary.com/...)")
+    .max(512, "filePath cannot exceed 512 characters"),
+  fileSize: z.coerce.number().int().positive("fileSize must be a positive integer").optional(),
+  mimeType: z.string().trim().max(50, "mimeType cannot exceed 50 characters").optional(),
 });
 
 export const documentIdParamSchema = z.object({

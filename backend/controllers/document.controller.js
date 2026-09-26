@@ -38,6 +38,56 @@ const downloadFileToDisk = async (url, dest) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Retry helper — exponential backoff, only for transient Gemini quota errors
+// ─────────────────────────────────────────────────────────────────────────────
+
+// HTTP statuses that Gemini returns when temporarily overloaded / rate-limited
+const RETRYABLE_STATUSES = new Set([429, 500, 503]);
+
+/**
+ * Retries an async fn up to maxAttempts with exponential backoff.
+ * Only retries on transient errors (429, 503, "overloaded" messages).
+ * Hard errors (404 wrong model, 400 bad request, bad API key) fail immediately.
+ *
+ * @param {Function} fn          - Async function to attempt
+ * @param {number}   maxAttempts - Max number of tries (default 3)
+ * @param {number}   baseDelayMs - Starting delay in ms, doubles each retry (default 5s)
+ */
+const retryWithBackoff = async (fn, maxAttempts = 3, baseDelayMs = 5000) => {
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+
+      // Detect HTTP status from Gemini SDK error shape
+      const httpStatus = err?.status ?? err?.response?.status;
+      const isRetryable =
+        RETRYABLE_STATUSES.has(httpStatus) ||
+        /too many requests|rate.?limit|overloaded|try again|quota/i.test(
+          err?.message || "",
+        );
+
+      if (!isRetryable || attempt === maxAttempts) {
+        // Hard error (404, 400, bad key) or exhausted attempts — surface immediately
+        throw err;
+      }
+
+      // Exponential backoff: 5s → 10s → 20s
+      const delayMs = baseDelayMs * 2 ** (attempt - 1);
+      console.warn(
+        `[Retry] Attempt ${attempt}/${maxAttempts} failed (HTTP ${httpStatus ?? "unknown"}). Retrying in ${delayMs / 1000}s...`,
+      );
+      await new Promise((r) => setTimeout(r, delayMs));
+    }
+  }
+
+  throw lastError;
+};
+
 // Background AI Processing Task (Zero-Flicker Architecture)
 const processDocumentInBackground = async (documentId, fileUrl, mimeType) => {
   const tmpFilePath = path.join(os.tmpdir(), `document_${documentId}.pdf`);
@@ -61,7 +111,8 @@ const processDocumentInBackground = async (documentId, fileUrl, mimeType) => {
       file: tmpFilePath,
       mimeType: mimeType || "application/pdf",
     });
-    uploadedFileUri = uploadResult.name;
+    uploadedFileUri = uploadResult.name; // resource name — used only for ai.files.delete()
+    const uploadedFileGlobalUri = uploadResult.uri; // full https:// URI — used in generateContent
     console.log(`[Job ${documentId}] Uploaded successfully as ${uploadedFileUri}`);
 
     // 3. Call LLM to extract JSON structure
@@ -77,21 +128,30 @@ const processDocumentInBackground = async (documentId, fileUrl, mimeType) => {
       }
     `;
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          fileData: {
-            fileUri: uploadResult.name,
-            mimeType: uploadResult.mimeType,
+
+    // Retry only the LLM call — file upload already succeeded at this point
+    const response = await retryWithBackoff(
+      () =>
+        ai.models.generateContent({
+          model: "gemini-3.8-flash",
+          contents: [
+            {
+              fileData: {
+                // Must be the full https:// URI, NOT the short resource name
+                fileUri: uploadedFileGlobalUri,
+                mimeType: uploadResult.mimeType,
+              },
+            },
+            { text: prompt },
+          ],
+          config: {
+            responseMimeType: "application/json",
           },
-        },
-        { text: prompt },
-      ],
-      config: {
-        responseMimeType: "application/json",
-      },
-    });
+        }),
+      3,    // up to 3 attempts
+      3000, // start at 3s → 3s, 6s, 12s
+    );
+
 
     // Clean JSON fences if present
     let rawText = response.text?.trim() || "{}";
