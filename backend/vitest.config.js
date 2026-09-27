@@ -7,10 +7,6 @@ export default defineConfig({
     setupFiles: ["./tests/setup.js"],
     testTimeout: 30000,
     hookTimeout: 30000,
-    poolOptions: {
-      threads: {
-        singleThread: true, // Prevent database race conditions during tests
-      }
-    }
+    fileParallelism: false,
   },
 });

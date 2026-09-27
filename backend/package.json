@@ -12,7 +12,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "dev": "node --watch index.js"
+    "dev": "node --watch index.js",
+    "test": "vitest run"
   },
   "dependencies": {
     "@google/genai": "^2.19.0",
