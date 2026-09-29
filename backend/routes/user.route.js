@@ -6,6 +6,7 @@ import {
   getCurrentUser,
   logoutUser,
   refreshAccessToken,
+  getUserProfile,
 } from "../controllers/user.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
@@ -25,5 +26,8 @@ router.post("/refresh", refreshAccessToken);
 
 // @desc    GET /api/v1/user/me
 router.get("/me", verifyJWT, getCurrentUser); // Protected route to get user profile
+
+// @desc    GET /api/v1/user/profile
+router.get("/profile", verifyJWT, getUserProfile); // Protected — profile page: identity + enrolled classes
 
 export default router;

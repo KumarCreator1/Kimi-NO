@@ -3,7 +3,7 @@ import db from "../db/connectDb.js";
 import ms from "ms";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { users, refreshTokens } from "../models/Db.schema.js";
+import { users, refreshTokens, userClasses, classes } from "../models/Db.schema.js";
 import { registerSchema, loginSchema } from "../validations/validations.js";
 import {
   hashPassword,
@@ -132,6 +132,70 @@ const getCurrentUser = asyncHandler(async (req, res) => {
     200,
     { user: userWithoutPassword },
     "Current user fetched successfully",
+  ).send(res);
+});
+
+const getUserProfile = asyncHandler(async (req, res) => {
+  // req.user is populated by the verifyJWT middleware
+  const userId = req.user.id;
+
+  // ── Single query: targeted columns only ──────────────────────────────────
+  // Select the 4 identity fields + enrolled-class info in one JOIN trip.
+  // LEFT JOIN so users with zero class memberships still get a response
+  // (rows[0] will have null class fields).
+  //
+  // Deliberately excluded (not needed on the profile page):
+  //   • users.password           — never sent to frontend
+  //   • users.createdAt/updatedAt — not shown on profile
+  //   • classes.description       — belongs on the class detail page
+  //   • classes.createdAt/updatedAt, userClasses.createdAt — not needed
+  // ─────────────────────────────────────────────────────────────────────────
+  const rows = await db
+    .select({
+      // Identity
+      id:        users.id,
+      firstName: users.firstName,
+      lastName:  users.lastName,
+      email:     users.email,
+      // Enrolled class info (null columns when user has no memberships)
+      classId:        classes.id,
+      className:      classes.className,
+      role:           userClasses.role,
+      classCreatorId: classes.userId, // client compares to user.id → "Owner" badge
+    })
+    .from(users)
+    .leftJoin(userClasses, eq(userClasses.userId, users.id))
+    .leftJoin(classes,     eq(classes.id, userClasses.classId))
+    .where(eq(users.id, userId));
+
+  if (!rows.length) {
+    throw new AppError(404, "User not found");
+  }
+
+  // All rows share the same identity columns — destructure once from the first row.
+  const { id, firstName, lastName, email } = rows[0];
+
+  // Aggregate class rows into an array, filtering out the null-class row that
+  // appears when the user has no memberships.
+  //
+  // Ownership flag (classCreatorId === user.id) is left to the client —
+  // a trivial string compare that costs zero server resources.
+  const enrolledClasses = rows
+    .filter((r) => r.classId !== null)
+    .map(({ classId, className, role, classCreatorId }) => ({
+      classId,
+      className,
+      role,
+      classCreatorId,
+    }));
+
+  return new ApiResponse(
+    200,
+    {
+      user: { id, firstName, lastName, email },
+      enrolledClasses,
+    },
+    "Profile fetched successfully",
   ).send(res);
 });
 
@@ -366,4 +430,5 @@ export {
   logoutUser,
   getCurrentUser,
   refreshAccessToken,
+  getUserProfile,
 };
