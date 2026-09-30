@@ -5,6 +5,7 @@ import {
   getDocumentsBySubject,
   syncDocumentStatus,
   deleteDocument,
+  retryDocumentEnrichment,
 } from "../controllers/document.controller.js";
 
 // mergeParams to access :classId and :subjectId from parent routes
@@ -25,5 +26,10 @@ router.get("/:documentId/sync", checkClassRole(), syncDocumentStatus);
 // @desc  DELETE /api/v1/class/:classId/subject/:subjectId/document/:documentId
 // Delete document — admin only
 router.delete("/:documentId", checkClassRole("admin"), deleteDocument);
+
+// @desc  POST   /api/v1/class/:classId/subject/:subjectId/document/:documentId/retry
+// Re-triggers AI enrichment for a document stuck in "failed" status.
+// Any class member can retry (same access level as reading documents).
+router.post("/:documentId/retry", checkClassRole(), retryDocumentEnrichment);
 
 export default router;

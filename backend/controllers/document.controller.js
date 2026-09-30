@@ -384,3 +384,79 @@ export const deleteDocument = asyncHandler(async (req, res) => {
 
   return new ApiResponse(200, null, "Document deleted").send(res);
 });
+
+// POST /api/v1/class/:classId/subject/:subjectId/document/:documentId/retry
+// Manually re-triggers AI enrichment for a document stuck in "failed" status.
+// Common cause: transient Gemini 403/429 during a demand spike — the existing
+// retryWithBackoff only covers retries *within* a single processing run.
+// This endpoint allows a member to re-queue the job after the spike subsides.
+export const retryDocumentEnrichment = asyncHandler(async (req, res) => {
+  const parsed = documentIdParamSchema.safeParse(req.params);
+  if (!parsed.success) {
+    throw new AppError(400, parsed.error.issues[0].message);
+  }
+
+  const { classId, documentId } = parsed.data;
+
+  // ── Fetch the document ───────────────────────────────────────────────────
+  const [doc] = await db
+    .select()
+    .from(documents)
+    .where(
+      and(
+        eq(documents.id, documentId),
+        eq(documents.classId, classId),
+        isNull(documents.deletedAt),
+      ),
+    )
+    .limit(1);
+
+  if (!doc) {
+    throw new AppError(404, "Document not found");
+  }
+
+  // ── Guard: only failed documents can be retried ──────────────────────────
+  if (doc.status !== "failed") {
+    throw new AppError(
+      409,
+      doc.status === "converting"
+        ? "Document is already being processed — please wait."
+        : "Document has already been successfully enriched.",
+    );
+  }
+
+  // ── Guard: prevent double-trigger (concurrent retry clicks) ─────────────
+  // Re-lock the row atomically. If lockedAt is already set, another request
+  // beat us to it — bail out instead of spawning two background jobs.
+  const [locked] = await db
+    .update(documents)
+    .set({
+      status: "converting",
+      lockedAt: new Date(),
+      processingError: null, // clear the previous error
+    })
+    .where(
+      and(
+        eq(documents.id, documentId),
+        eq(documents.status, "failed"), // only wins the race if still "failed"
+      ),
+    )
+    .returning({ id: documents.id, filePath: documents.filePath, mimeType: documents.mimeType });
+
+  if (!locked) {
+    // Another request already flipped status to "converting" — don't double-fire
+    throw new AppError(409, "Retry already in progress — please wait.");
+  }
+
+  // ── Kick off enrichment — reuse the exact same pipeline as createDocument ─
+  // Fire-and-forget: frees the HTTP response immediately (same zero-flicker
+  // pattern used on upload). processDocumentInBackground handles its own
+  // DB status updates (→ "ready" or → "failed") and all cleanup.
+  processDocumentInBackground(locked.id, locked.filePath, locked.mimeType);
+
+  return new ApiResponse(
+    202,
+    { documentId: locked.id, status: "converting" },
+    "Retry started. AI enrichment is running in the background.",
+  ).send(res);
+});
